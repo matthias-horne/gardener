@@ -69,6 +69,9 @@ func (r *Reconciler) AddToManager(mgr manager.Manager) error {
 	if r.HelmRegistry == nil {
 		r.HelmRegistry = oci.NewHelmRegistry(r.RuntimeClientSet.Client())
 	}
+	if r.CompatibilityRegistry == nil {
+		r.CompatibilityRegistry = oci.NewCompatibilityRegistry(r.RuntimeClientSet.Client())
+	}
 
 	if r.GardenNamespace == "" {
 		r.GardenNamespace = v1beta1constants.GardenNamespace
@@ -94,6 +97,7 @@ func (r *Reconciler) AddToManager(mgr manager.Manager) error {
 		For(&operatorv1alpha1.Extension{}, builder.WithPredicates(predicate.Or(
 			predicate.GenerationChangedPredicate{},
 			operatorpredicate.ExtensionRequirementsChanged(),
+			operatorpredicate.ExtensionManifestChanged(),
 		))).
 		WithOptions(controller.Options{
 			MaxConcurrentReconciles: int(ptr.Deref(r.Config.Controllers.Extension.ConcurrentSyncs, 0)),

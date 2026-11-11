@@ -9,6 +9,10 @@ import (
 )
 
 const (
+	// AnnotationExtensionManifest is an OCI reference to the published extension.yaml artifact.
+	// Its attached compatibility.yaml artifact is used to check Gardener version compatibility.
+	AnnotationExtensionManifest = "extension.garden.cloud/manifest"
+
 	// SecretManagerIdentityOperator is the identity for the secret manager used inside gardener-operator.
 	SecretManagerIdentityOperator = "gardener-operator"
 

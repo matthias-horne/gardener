@@ -7,6 +7,7 @@ package extension
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/go-logr/logr"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -31,6 +32,9 @@ import (
 	"github.com/gardener/gardener/pkg/utils/oci"
 )
 
+// CompatibilityCheckInterval is the interval for discovering newly attached compatibility information.
+const CompatibilityCheckInterval = time.Hour
+
 const (
 	// ReasonReconcileFailed indicates the reconciliation failed.
 	ReasonReconcileFailed = "ReconcileFailed"
@@ -48,13 +52,14 @@ const (
 
 // Reconciler reconciles Extensions.
 type Reconciler struct {
-	RuntimeClientSet kubernetes.Interface
-	GardenClientMap  clientmap.ClientMap
-	Config           operatorconfigv1alpha1.OperatorConfiguration
-	GardenNamespace  string
-	HelmRegistry     oci.Interface
-	Clock            clock.Clock
-	Recorder         events.EventRecorder
+	RuntimeClientSet      kubernetes.Interface
+	GardenClientMap       clientmap.ClientMap
+	Config                operatorconfigv1alpha1.OperatorConfiguration
+	GardenNamespace       string
+	HelmRegistry          oci.Interface
+	CompatibilityRegistry oci.Interface
+	Clock                 clock.Clock
+	Recorder              events.EventRecorder
 
 	admission              admission.Interface
 	controllerRegistration controllerregistration.Interface
@@ -94,7 +99,11 @@ func (r *Reconciler) Reconcile(ctx context.Context, request reconcile.Request) (
 		return r.delete(ctx, log, extension, conditions)
 	}
 
-	return r.reconcile(ctx, log, garden, extension, conditions)
+	result, err := r.reconcile(ctx, log, garden, extension, conditions)
+	if _, present := extension.Annotations[operatorv1alpha1.AnnotationExtensionManifest]; present && err == nil && (result.RequeueAfter == 0 || result.RequeueAfter > CompatibilityCheckInterval) {
+		result.RequeueAfter = CompatibilityCheckInterval
+	}
+	return result, err
 }
 
 func (r *Reconciler) updateExtensionStatus(ctx context.Context, log logr.Logger, extension *operatorv1alpha1.Extension, updatedConditions Conditions) error {
@@ -134,13 +143,15 @@ func (r *Reconciler) removeFinalizer(ctx context.Context, log logr.Logger, exten
 
 // Conditions contains all conditions of the extension status subresource.
 type Conditions struct {
-	installed gardencorev1beta1.Condition
+	installed  gardencorev1beta1.Condition
+	compatible gardencorev1beta1.Condition
 }
 
 // ConvertToSlice returns the garden conditions as a slice.
 func (c Conditions) ConvertToSlice() []gardencorev1beta1.Condition {
 	return []gardencorev1beta1.Condition{
 		c.installed,
+		c.compatible,
 	}
 }
 
@@ -148,6 +159,7 @@ func (c Conditions) ConvertToSlice() []gardencorev1beta1.Condition {
 func (c Conditions) ConditionTypes() []gardencorev1beta1.ConditionType {
 	return []gardencorev1beta1.ConditionType{
 		c.installed.Type,
+		c.compatible.Type,
 	}
 }
 
@@ -155,7 +167,8 @@ func (c Conditions) ConditionTypes() []gardencorev1beta1.ConditionType {
 // All conditions are retrieved from the given 'status' or newly initialized.
 func NewConditions(clock clock.Clock, status operatorv1alpha1.ExtensionStatus) Conditions {
 	return Conditions{
-		installed: v1beta1helper.GetOrInitConditionWithClock(clock, status.Conditions, operatorv1alpha1.ExtensionInstalled),
+		installed:  v1beta1helper.GetOrInitConditionWithClock(clock, status.Conditions, operatorv1alpha1.ExtensionInstalled),
+		compatible: v1beta1helper.GetOrInitConditionWithClock(clock, status.Conditions, operatorv1alpha1.ExtensionCompatible),
 	}
 }
 

@@ -194,6 +194,49 @@ Therefore, Gardener automatically injects a kubeconfig into the admission deploy
 
 ### Configuration for Extension Resources
 
+An `Extension` can optionally reference its published OCI artifact via the `extension.garden.cloud/manifest` annotation:
+
+```yaml
+metadata:
+  annotations:
+    extension.garden.cloud/manifest: ghcr.io/gardener/extensions/gardener-extension-example:v0.0.2
+```
+
+The reference can use a tag or a digest (`repository@sha256:...`).
+The published artifact contains `extension.yaml` with media type `application/gardener.extension+yaml`.
+Compatibility information is published separately as an OCI referrer attached to that artifact's digest, with artifact type `application/gardener.compatibility+yaml`.
+The operator discovers these attachments using the OCI referrers API, with support for the referrers tag fallback used by GHCR, and reads the file layer named `compatibility.yaml` (identified by `org.opencontainers.image.title`).
+When multiple compatibility attachments exist, it uses the newest `org.opencontainers.image.created` timestamp. Missing or equal timestamps are resolved deterministically by digest.
+Discovery is repeated on annotation changes, during reconciliation, and at least once an hour, so newly attached test results can be picked up.
+The compatibility file has the following format:
+
+```yaml
+requires:
+  gardener/gardener: '>= 1.135.0'
+supportedFeatures:
+- namespaced-cloudprofiles
+- ipv6
+builtWith:
+  gardener/gardener: v1.153.0
+testedWith:
+  gardener/gardener: v1.154.1
+  kubernetesVersions:
+  - "1.36"
+  - "1.35"
+```
+
+`requires`, `builtWith`, and `testedWith` are optional, including their `gardener/gardener` entries.
+The `requires.gardener/gardener` entry is evaluated as a semantic version constraint against the running `gardener-operator` version.
+The `builtWith` and `testedWith` Gardener versions are compared as semantic versions against the same operator version.
+The result is reported in the `Compatible` condition in `.status.conditions`.
+The condition is `True` if the supplied version bounds are satisfied, including equal versions.
+If the operator does not satisfy `requires.gardener/gardener`, is older than `builtWith.gardener/gardener`, or is newer than `testedWith.gardener/gardener`, the condition is `False`, with the mismatches described in its reason and message.
+Version mismatches are advisory and do not prevent extension installation.
+The condition becomes `Unknown` when the annotation is removed, no compatibility attachment exists, or `compatibility.yaml` does not specify Gardener version bounds.
+Missing manifest artifacts, registry errors, missing `compatibility.yaml` files in compatibility artifacts, invalid YAML, and invalid compatibility versions or constraints are reported only in the `Compatible` condition with status `Unknown` and reason `CompatibilityCheckFailed`.
+Compatibility information is purely informational: neither version mismatches nor failures to retrieve or evaluate it prevent extension installation or affect its health and readiness.
+Supported features and Kubernetes versions are metadata; deployment configuration continues to come from the `Extension` specification.
+
 The `.spec.resources` field refers to the extension resources as defined by Gardener in the `extensions.gardener.cloud/v1alpha1` API.
 These include both well-known types such as `Infrastructure`, `Worker` etc. and [generic resources](https://github.com/gardener/gardener/blob/master/docs/extensions/registration.md#extension-resource-configurations).
 The field will be used to populate the respective field in the resulting `ControllerRegistration` in the garden cluster.

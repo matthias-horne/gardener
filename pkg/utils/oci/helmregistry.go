@@ -46,7 +46,7 @@ var (
 
 // Interface represents an OCI compatible registry.
 type Interface interface {
-	// Pull from the repository and return the Helm chart.
+	// Pull from the repository and return the artifact content.
 	// The context can be used to pass the secret namespace with the key ContextKeySecretNamespace.
 	Pull(ctx context.Context, oci *gardencorev1.OCIRepository) ([]byte, error)
 }
@@ -68,10 +68,51 @@ func NewHelmRegistry(c client.Client) *HelmRegistry {
 
 // Pull from the repository and return the compressed archive.
 func (r *HelmRegistry) Pull(ctx context.Context, oci *gardencorev1.OCIRepository) ([]byte, error) {
+	return r.pull(ctx, oci, "", extractHelmLayer)
+}
+
+func (r *HelmRegistry) pull(ctx context.Context, oci *gardencorev1.OCIRepository, cachePrefix string, extract func(gcrv1.Image) ([]byte, error)) ([]byte, error) {
 	ref, err := buildRef(oci)
 	if err != nil {
 		return nil, err
 	}
+	remoteOpts, err := r.remoteOptions(ctx, oci)
+	if err != nil {
+		return nil, err
+	}
+
+	key, err := cacheKeyFromRef(ref, remoteOpts...)
+	if err != nil {
+		return nil, err
+	}
+	if key != "" {
+		if blob, found := r.cache.Get(cachePrefix + key); found {
+			return blob, nil
+		}
+	}
+
+	img, err := remote.Image(ref, remoteOpts...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to pull artifact %s: %w", ref, err)
+	}
+	blob, err := extract(img)
+	if err != nil {
+		return nil, err
+	}
+
+	// construct cache key based on digest of the pulled artifact
+	digest, err := img.Digest()
+	if err != nil {
+		return nil, err
+	}
+	key = ref.Context().Digest(digest.String()).Name()
+	r.cache.Set(cachePrefix+key, blob)
+
+	return blob, nil
+}
+
+func (r *HelmRegistry) remoteOptions(ctx context.Context, oci *gardencorev1.OCIRepository) ([]remote.Option, error) {
+	var err error
 	remoteOpts := []remote.Option{
 		remote.WithContext(ctx),
 	}
@@ -144,34 +185,7 @@ func (r *HelmRegistry) Pull(ctx context.Context, oci *gardencorev1.OCIRepository
 		remoteOpts = append(remoteOpts, remote.WithAuthFromKeychain(&keychain{pullSecret: string(secret.Data[corev1.DockerConfigJsonKey])}))
 	}
 
-	key, err := cacheKeyFromRef(ref, remoteOpts...)
-	if err != nil {
-		return nil, err
-	}
-	if key != "" {
-		if blob, found := r.cache.Get(key); found {
-			return blob, nil
-		}
-	}
-
-	img, err := remote.Image(ref, remoteOpts...)
-	if err != nil {
-		return nil, fmt.Errorf("failed to pull artifact %s: %w", ref, err)
-	}
-	blob, err := extractHelmLayer(img)
-	if err != nil {
-		return nil, err
-	}
-
-	// construct cache key based on digest of the pulled artifact
-	digest, err := img.Digest()
-	if err != nil {
-		return nil, err
-	}
-	key = ref.Context().Digest(digest.String()).Name()
-	r.cache.Set(key, blob)
-
-	return blob, nil
+	return remoteOpts, nil
 }
 
 func buildRef(oci *gardencorev1.OCIRepository) (name.Reference, error) {

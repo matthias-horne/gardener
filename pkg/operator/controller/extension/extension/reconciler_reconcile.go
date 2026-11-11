@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	"k8s.io/component-base/version"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -38,10 +39,12 @@ func (r *Reconciler) reconcile(
 	reconcile.Result,
 	error,
 ) {
+	conditions.compatible = r.reconcileCompatibility(ctx, extension, version.Get().GitVersion, conditions.compatible)
+
 	if garden.garden == nil {
 		if conditions.installed.Status == gardencorev1beta1.ConditionFalse && conditions.installed.Reason == ReasonDeleteSuccessful {
 			// Retain condition if the extension was previously uninstalled due to a garden deletion
-			return reconcile.Result{}, nil
+			return reconcile.Result{}, r.updateExtensionStatus(ctx, log, extension, conditions)
 		}
 
 		conditions.installed = v1beta1helper.UpdatedConditionWithClock(r.Clock, conditions.installed, gardencorev1beta1.ConditionFalse, ReasonNoGardenFound, "No garden found")

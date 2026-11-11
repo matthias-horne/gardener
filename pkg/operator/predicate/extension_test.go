@@ -18,6 +18,35 @@ import (
 var _ = Describe("Extension", func() {
 	var p predicate.Predicate
 
+	Describe("#ExtensionManifestChanged", func() {
+		DescribeTable("detects changes to the manifest annotation", func(oldRef, newRef *string, changed bool) {
+			oldExtension, newExtension := &operatorv1alpha1.Extension{}, &operatorv1alpha1.Extension{}
+			if oldRef != nil {
+				oldExtension.Annotations = map[string]string{operatorv1alpha1.AnnotationExtensionManifest: *oldRef}
+			}
+			if newRef != nil {
+				newExtension.Annotations = map[string]string{operatorv1alpha1.AnnotationExtensionManifest: *newRef}
+			}
+			Expect(ExtensionManifestChanged().Update(event.UpdateEvent{ObjectOld: oldExtension, ObjectNew: newExtension})).To(Equal(changed))
+		},
+			Entry("absent", nil, nil, false),
+			Entry("added", nil, new("example.com/extension:v1"), true),
+			Entry("changed", new("example.com/extension:v1"), new("example.com/extension:v2"), true),
+			Entry("removed", new("example.com/extension:v1"), nil, true),
+			Entry("unchanged", new("example.com/extension:v1"), new("example.com/extension:v1"), false),
+			Entry("empty annotation added", nil, new(""), true),
+			Entry("empty annotation removed", new(""), nil, true),
+		)
+
+		It("ignores status and unrelated annotation changes", func() {
+			oldExtension, newExtension := &operatorv1alpha1.Extension{}, &operatorv1alpha1.Extension{}
+			newExtension.Annotations = map[string]string{"other": "value"}
+			newExtension.Status.Conditions = []gardencorev1beta1.Condition{{Type: operatorv1alpha1.ExtensionCompatible, Status: gardencorev1beta1.ConditionFalse}}
+			Expect(ExtensionManifestChanged().Update(event.UpdateEvent{ObjectOld: oldExtension, ObjectNew: newExtension})).To(BeFalse())
+			Expect(ExtensionManifestChanged().Update(event.UpdateEvent{})).To(BeFalse())
+		})
+	})
+
 	Describe("#ExtensionRequirementsChanged", func() {
 		BeforeEach(func() {
 			p = ExtensionRequirementsChanged()

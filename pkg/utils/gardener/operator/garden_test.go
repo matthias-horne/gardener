@@ -293,7 +293,12 @@ var _ = Describe("Garden", func() {
 			Expect(RequiredGardenExtensionsReady(ctx, log, fakeClient, gardenNamespace, sets.New("BackupBucket/local-infrastructure"))).To(MatchError("extension controllers missing or unready: map[BackupBucket/local-infrastructure:{}]"))
 		})
 
-		It("should succeed if required extension is ready", func() {
+		DescribeTable("should succeed if required extension is ready", func(compatibilityStatus gardencorev1beta1.ConditionStatus) {
+			if compatibilityStatus != "" {
+				extension.Status.Conditions = []gardencorev1beta1.Condition{{Type: operatorv1alpha1.ExtensionCompatible, Status: compatibilityStatus}}
+				Expect(fakeClient.Update(ctx, extension)).To(Succeed())
+			}
+
 			managedResource.Status.Conditions = []gardencorev1beta1.Condition{
 				{Type: resourcesv1alpha1.ResourcesApplied, Status: gardencorev1beta1.ConditionTrue, LastTransitionTime: metav1.Now(), LastUpdateTime: metav1.Now()},
 				{Type: resourcesv1alpha1.ResourcesHealthy, Status: gardencorev1beta1.ConditionTrue, LastTransitionTime: metav1.Now(), LastUpdateTime: metav1.Now()},
@@ -302,6 +307,10 @@ var _ = Describe("Garden", func() {
 			Expect(fakeClient.Update(ctx, managedResource)).To(Succeed())
 
 			Expect(RequiredGardenExtensionsReady(ctx, log, fakeClient, gardenNamespace, sets.New("BackupBucket/local-infrastructure", "DNSRecord/local-dns"))).To(Succeed())
-		})
+		},
+			Entry("without a compatibility condition", gardencorev1beta1.ConditionStatus("")),
+			Entry("with Compatible=False", gardencorev1beta1.ConditionFalse),
+			Entry("with Compatible=Unknown", gardencorev1beta1.ConditionUnknown),
+		)
 	})
 })

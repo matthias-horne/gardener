@@ -150,6 +150,8 @@ type ExtensionStatus struct {
 const (
 	// ExtensionInstalled is a condition type for indicating whether the extension has been installed.
 	ExtensionInstalled gardencorev1beta1.ConditionType = "Installed"
+	// ExtensionCompatible is a condition type for indicating compatibility with the running Gardener operator version based on the attached compatibility information.
+	ExtensionCompatible gardencorev1beta1.ConditionType = "Compatible"
 	// ExtensionRequiredRuntime is a condition type for indicating whether the extension is required in the garden runtime cluster.
 	ExtensionRequiredRuntime gardencorev1beta1.ConditionType = "RequiredRuntime"
 	// ExtensionRequiredVirtual is a condition type for indicating whether the extension is required in the virtual garden cluster.

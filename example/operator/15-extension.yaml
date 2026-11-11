@@ -2,6 +2,8 @@ apiVersion: operator.gardener.cloud/v1alpha1
 kind: Extension
 metadata:
   name: provider-local
+  # annotations:
+  #   extension.garden.cloud/manifest: ghcr.io/gardener/extensions/gardener-extension-example:v0.0.2
 #spec:
 #  resources:
 #  - kind: BackupBucket

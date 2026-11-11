@@ -13,6 +13,22 @@ import (
 	operatorv1alpha1 "github.com/gardener/gardener/pkg/apis/operator/v1alpha1"
 )
 
+// ExtensionManifestChanged returns true when the extension manifest reference annotation changes.
+func ExtensionManifestChanged() predicate.Predicate {
+	return predicate.Funcs{
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			if e.ObjectOld == nil || e.ObjectNew == nil {
+				return false
+			}
+			oldRef, oldPresent := e.ObjectOld.GetAnnotations()[operatorv1alpha1.AnnotationExtensionManifest]
+			newRef, newPresent := e.ObjectNew.GetAnnotations()[operatorv1alpha1.AnnotationExtensionManifest]
+			return oldPresent != newPresent || oldRef != newRef
+		},
+		DeleteFunc:  func(event.DeleteEvent) bool { return false },
+		GenericFunc: func(event.GenericEvent) bool { return false },
+	}
+}
+
 // ExtensionRequirementsChanged is a predicate which returns 'true' if any required condition changed for the extension object.
 func ExtensionRequirementsChanged() predicate.Predicate {
 	return predicate.Funcs{

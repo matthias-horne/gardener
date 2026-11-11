@@ -120,7 +120,15 @@ var _ = Describe("Extension health", func() {
 				Expect(virtualClient.Create(ctx, healthyControllerInstallation("foo", controllerRegistration.Name, controllerRegistration.ResourceVersion))).To(Succeed())
 			})
 
-			It("should set ExtensionComponentsRunning condition to true", func() {
+			DescribeTable("should report healthy extension components", func(compatibilityStatus gardencorev1beta1.ConditionStatus) {
+				if compatibilityStatus != "" {
+					extension.Status.Conditions = append(extension.Status.Conditions, gardencorev1beta1.Condition{
+						Type:   operatorv1alpha1.ExtensionCompatible,
+						Status: compatibilityStatus,
+					})
+					extensionConditions = NewExtensionConditions(fakeClock, extension)
+				}
+
 				updatedConditions := NewHealth(
 					extension,
 					runtimeClient,
@@ -134,13 +142,17 @@ var _ = Describe("Extension health", func() {
 						fakeClock),
 				).Check(ctx, extensionConditions)
 
-				Expect(updatedConditions).ToNot(BeEmpty())
+				Expect(updatedConditions).To(HaveLen(3))
 				Expect(updatedConditions).To(ContainElements(
 					beConditionWithStatusReasonAndMessage(gardencorev1beta1.ConditionTrue, "ControllerInstallationsRunning", "All controller installations are healthy."),
 					beConditionWithStatusReasonAndMessage(gardencorev1beta1.ConditionTrue, "ExtensionComponentsRunning", "All extension components are healthy."),
 					beConditionWithStatusReasonAndMessage(gardencorev1beta1.ConditionTrue, "ExtensionAdmissionComponentsRunning", "All extension admission components are healthy."),
 				))
-			})
+			},
+				Entry("without a compatibility condition", gardencorev1beta1.ConditionStatus("")),
+				Entry("with Compatible=False", gardencorev1beta1.ConditionFalse),
+				Entry("with Compatible=Unknown", gardencorev1beta1.ConditionUnknown),
+			)
 		})
 
 		Context("when there are issues with extension managed resources", func() {
