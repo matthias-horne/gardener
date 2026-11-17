@@ -21,14 +21,14 @@ var _ = Describe("Component", func() {
 			component = New()
 		})
 
-		It("should return the expected units and files", func() {
-			units, files, err := component.Config(components.Context{})
+		DescribeTable("should return the expected units and files", func(registryCABundle *string, expectedCAFilePaths []string) {
+			units, files, err := component.Config(components.Context{RegistryCABundle: registryCABundle})
 
 			Expect(err).NotTo(HaveOccurred())
 
 			containerdUnit := extensionsv1alpha1.Unit{
 				Name:      "containerd.service",
-				FilePaths: []string{"/var/lib/ca-certificates-local/ROOTcerts.crt"},
+				FilePaths: expectedCAFilePaths,
 			}
 
 			logrotateUnit := extensionsv1alpha1.Unit{
@@ -75,7 +75,13 @@ WantedBy=multi-user.target`),
 
 			Expect(units).To(ConsistOf(containerdUnit, logrotateUnit, logrotateTimerUnit))
 			Expect(files).To(ConsistOf(logrotateConfigFile))
-		})
+		},
+			Entry("without a registry CA bundle", nil, []string{"/var/lib/ca-certificates-local/ROOTcerts.crt"}),
+			Entry("with a registry CA bundle", new("registry-ca"), []string{
+				"/var/lib/ca-certificates-local/ROOTcerts.crt",
+				"/var/lib/ca-certificates-local/registry-ca.crt",
+			}),
+		)
 	})
 })
 

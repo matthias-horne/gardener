@@ -34,7 +34,7 @@ func (containerd) Name() string {
 	return ContainerRuntime
 }
 
-func (containerd) Config(_ components.Context) ([]extensionsv1alpha1.Unit, []extensionsv1alpha1.File, error) {
+func (containerd) Config(ctx components.Context) ([]extensionsv1alpha1.Unit, []extensionsv1alpha1.File, error) {
 	const pathLogRotateConfig = "/etc/systemd/containerd.conf"
 
 	logRotateUnits, logRotateFiles := logrotate.Config(pathLogRotateConfig, "/var/log/pods/*/*/*.log", ContainerRuntime)
@@ -43,6 +43,10 @@ func (containerd) Config(_ components.Context) ([]extensionsv1alpha1.Unit, []ext
 	containerdUnit := extensionsv1alpha1.Unit{
 		Name:      UnitName,
 		FilePaths: []string{rootcertificates.PathLocalSSLRootCerts},
+	}
+	if ctx.RegistryCABundle != nil {
+		// Adding or removing the path also triggers a restart when the registry CA bundle is configured or removed.
+		containerdUnit.FilePaths = append(containerdUnit.FilePaths, rootcertificates.PathLocalSSLRegistryCACerts)
 	}
 
 	return append(logRotateUnits, containerdUnit), logRotateFiles, nil
